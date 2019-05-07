@@ -1,0 +1,95 @@
+﻿<Page
+    x:Class="HoloDanmaku.DanmakuPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:HoloDanmaku"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:DanmakuService.Bilibili.Models"
+    mc:Ignorable="d"
+    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <StackPanel Orientation="Horizontal" Padding="12">
+            <TextBlock>人气值：</TextBlock>
+            <TextBlock Name="CountTextBlock"/>
+        </StackPanel>
+        <ListView Grid.Row="1" SelectionMode="None" IsItemClickEnabled="False" ItemsSource="{x:Bind ItemsSource}">
+            <ListView.ItemTemplateSelector>
+                <local:DanmakuDataTemplateSelector>
+                    <local:DanmakuDataTemplateSelector.DanmakuTemplate>
+                        <DataTemplate x:DataType="models:DanmakuModel">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{x:Bind UserName}"/>
+                                <TextBlock Text="："/>
+                                <TextBlock Text="{x:Bind CommentText}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </local:DanmakuDataTemplateSelector.DanmakuTemplate>
+                    <local:DanmakuDataTemplateSelector.GiftTemplate>
+                        <DataTemplate x:DataType="models:DanmakuModel">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{x:Bind UserName}"/>
+                                <TextBlock Text=" 送出了礼物 "/>
+                                <TextBlock Text="{x:Bind GiftName}"/>
+                                <TextBlock Text=" x"/>
+                                <TextBlock Text="{x:Bind GiftCount}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </local:DanmakuDataTemplateSelector.GiftTemplate>
+                    <local:DanmakuDataTemplateSelector.GiftTopTemplate>
+                        <DataTemplate x:DataType="models:DanmakuModel">
+                            <Grid></Grid>
+                        </DataTemplate>
+                    </local:DanmakuDataTemplateSelector.GiftTopTemplate>
+                    <local:DanmakuDataTemplateSelector.GuardBuyTemplate>
+                        <DataTemplate x:DataType="models:DanmakuModel">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{x:Bind UserName}"/>
+                                <TextBlock Text=" 购买了船票！"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </local:DanmakuDataTemplateSelector.GuardBuyTemplate>
+                    <local:DanmakuDataTemplateSelector.LiveEndTemplate>
+                        <DataTemplate>
+                            <TextBlock>直播结束了！</TextBlock>
+                        </DataTemplate>
+                    </local:DanmakuDataTemplateSelector.LiveEndTemplate>
+                    <local:DanmakuDataTemplateSelector.LiveStartTemplate>
+                        <DataTemplate>
+                            <TextBlock>直播开始了！</TextBlock>
+                        </DataTemplate>
+                    </local:DanmakuDataTemplateSelector.LiveStartTemplate>
+                    <local:DanmakuDataTemplateSelector.WelcomeGuardTemplate>
+                        <DataTemplate x:DataType="models:DanmakuModel">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="欢迎 "/>
+                                <TextBlock Text="{x:Bind UserName}"/>
+                                <TextBlock Text=" 上船！"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </local:DanmakuDataTemplateSelector.WelcomeGuardTemplate>
+                    <local:DanmakuDataTemplateSelector.WelcomeTemplate>
+                        <DataTemplate x:DataType="models:DanmakuModel">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="欢迎 "/>
+                                <TextBlock Text="{x:Bind UserName}"/>
+                                <TextBlock Text=" 来到直播间！"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </local:DanmakuDataTemplateSelector.WelcomeTemplate>
+                </local:DanmakuDataTemplateSelector>
+            </ListView.ItemTemplateSelector>
+            <ListView.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <ItemsStackPanel VerticalAlignment="Bottom"
+                                     ItemsUpdatingScrollMode="KeepLastItemInView"/>
+                </ItemsPanelTemplate>
+            </ListView.ItemsPanel>
+        </ListView>
+    </Grid>
+</Page>
