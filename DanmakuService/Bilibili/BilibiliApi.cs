@@ -1,14 +1,16 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Net.WebSockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using DanmakuService.Bilibili.Models;
 using DanmakuService.Common;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using WebSocketSharp;
 
 namespace DanmakuService.Bilibili
 {
@@ -16,47 +18,64 @@ namespace DanmakuService.Bilibili
     {
         private const short ProtocolVersion = 1;
         private readonly int _roomId;
-        private readonly WebSocket _socket;
+        private readonly ClientWebSocket _client;
+        private readonly CancellationTokenSource _source = new();
+        private readonly CancellationToken _token;
         public event EventHandler<uint> ViewerCountChanged;
         public event EventHandler<DanmakuModel> DanmakuReceived; 
 
         public BilibiliApi(int roomId)
         {
-            _socket = new WebSocket("wss://broadcastlv.chat.bilibili.com/sub");
             _roomId = roomId;
-            _socket.OnOpen += OnOpen;
-            _socket.OnClose += SocketOnClose;
-            _socket.OnMessage += OnMessage;
+            _token = _source.Token;
+            _client = new ClientWebSocket();
         }
 
-        public bool IsConnected { get; private set; }
+        public bool IsConnected => _client.State == WebSocketState.Open;
 
-        private void SocketOnClose(object sender, CloseEventArgs e)
-        {
-            IsConnected = false;
-        }
-
-        private void OnMessage(object sender, MessageEventArgs e)
+        private void OnMessage(byte[] rawData)
         {
             var currentIndex = 0;
 
-            var length = e.RawData.SubArray(currentIndex, 4).ToInt32();
+            var length = rawData.Skip(currentIndex).Take(4).ToArray().ToInt32();
             currentIndex += 4;
 
-            if (length < 16) throw new NotSupportedException("failed: (L:" + length + ")");
+            Console.WriteLine("length: " + length);
+            if (length < 16)
+            {
+                throw new NotSupportedException("failed: (L:" + length + ")");
+            }
 
-            var headLength = e.RawData.SubArray(currentIndex, 2).ToInt16();
+            var headLength = rawData.Skip(currentIndex).Take(2).ToArray().ToInt16();
             currentIndex += 2;
-            var shortTag = e.RawData.SubArray(currentIndex, 2).ToInt16();
+            var dataType = rawData.Skip(currentIndex).Take(2).ToArray().ToInt16();
             currentIndex += 2;
-            var type = e.RawData.SubArray(currentIndex, 4).ToInt32();
+            var type = rawData.Skip(currentIndex).Take(4).ToArray().ToInt32();
             currentIndex += 4;
-            var tag = e.RawData.SubArray(currentIndex, 4).ToInt32();
+            var tag = rawData.Skip(currentIndex).Take(4).ToArray().ToInt32();
             currentIndex += 4;
 
             var payloadLength = length - 16;
             if (payloadLength == 0) return;
-            var buffer = e.RawData.SubArray(currentIndex, payloadLength);
+            var buffer = rawData.Skip(currentIndex).Take(payloadLength).ToArray();
+            switch (dataType)
+            {
+                case 2:
+                    using (var compressedStream = new MemoryStream(rawData, currentIndex, payloadLength))
+                    {
+                        using (var gZipStream = new DeflateStream(compressedStream, CompressionMode.Decompress))
+                        {
+                            using (var decompressedStream = new MemoryStream())
+                            {
+                                gZipStream.CopyTo(decompressedStream);
+                                decompressedStream.Position = 0;
+                                buffer = decompressedStream.ToArray();
+                            }
+                        }
+                    }
+
+                    break;
+            }
             switch (type)
             {
                 case 3:
@@ -85,8 +104,9 @@ namespace DanmakuService.Bilibili
                             DanmakuReceived?.Invoke(this, new DanmakuModel(obj));
                         }
                     }
-                    catch (Exception)
+                    catch (Exception e)
                     {
+                        Console.WriteLine(e);
                     }
 
                     break;
@@ -94,15 +114,43 @@ namespace DanmakuService.Bilibili
             }
         }
 
-        public void Start()
+        public async Task StartAsync()
         {
-            _socket.Connect();
+            await _client.ConnectAsync(new Uri("wss://broadcastlv.chat.bilibili.com/sub"), _token);
+            await OnOpen();
+            StartMessageLoop();
         }
 
-        private void OnOpen(object sender, EventArgs e)
+        private void StartMessageLoop()
         {
-            IsConnected = true;
-            SendJoinRoom(_roomId);
+            Task.Run(async () =>
+            {
+                while (IsConnected)
+                {
+                    try
+                    {
+                        var buffer = new ArraySegment<byte>(new byte[4096]);
+                        var result = await _client.ReceiveAsync(buffer, _token);
+                        if (result.MessageType == WebSocketMessageType.Close)
+                        {
+                            await _client.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, _token);
+                        }
+                        else
+                        {
+                            OnMessage(buffer.Array);
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e);
+                    }
+                }
+            }, _token);
+        }
+
+        private async Task OnOpen()
+        {
+            await SendJoinRoom(_roomId);
             StartSendingHeartbeat();
         }
 
@@ -114,58 +162,54 @@ namespace DanmakuService.Bilibili
                 {
                     while (IsConnected)
                     {
-                        SendHeartbeat();
-                        await Task.Delay(TimeSpan.FromSeconds(30));
+                        await SendHeartbeat();
+                        await Task.Delay(TimeSpan.FromSeconds(30), _token);
                     }
                 }
                 catch (Exception e)
                 {
-                    _socket.Close();
+                    Console.WriteLine(e);
+                    await _client.CloseAsync(WebSocketCloseStatus.Empty, string.Empty, _token);
                 }
-            });
+            }, _token);
         }
 
-        private void SendHeartbeat()
+        private async Task SendHeartbeat()
         {
-            SendSocketData(2);
+            await SendSocketData(2);
         }
 
-        private void SendSocketData(int action, string body = "")
+        private async Task SendSocketData(int action, string body = "")
         {
-            SendSocketData(0, 16, ProtocolVersion, action, 1, body);
+            await SendSocketData(0, 16, ProtocolVersion, action, 1, body);
         }
 
-        private void SendSocketData(int packetLength, short headerLength, short ver, int action, int param = 1,
+        private async Task SendSocketData(int packetLength, short headerLength, short ver, int action, int param = 1,
             string body = "")
         {
             var payload = Encoding.UTF8.GetBytes(body);
             if (packetLength == 0) packetLength = payload.Length + 16;
             var buffer = new byte[packetLength];
-            using (var ms = new MemoryStream(buffer))
-            {
-                var b = BitConverter.GetBytes(buffer.Length).ToBE();
-                ms.Write(b, 0, 4);
-                b = BitConverter.GetBytes(headerLength).ToBE();
-                ms.Write(b, 0, 2);
-                b = BitConverter.GetBytes(ver).ToBE();
-                ms.Write(b, 0, 2);
-                b = BitConverter.GetBytes(action).ToBE();
-                ms.Write(b, 0, 4);
-                b = BitConverter.GetBytes(param).ToBE();
-                ms.Write(b, 0, 4);
-                if (payload.Length > 0) ms.Write(payload, 0, payload.Length);
-
-                _socket.Send(buffer);
-            }
+            using var ms = new MemoryStream(buffer);
+            var b = BitConverter.GetBytes(buffer.Length).ToBE();
+            ms.Write(b, 0, 4);
+            b = BitConverter.GetBytes(headerLength).ToBE();
+            ms.Write(b, 0, 2);
+            b = BitConverter.GetBytes(ver).ToBE();
+            ms.Write(b, 0, 2);
+            b = BitConverter.GetBytes(action).ToBE();
+            ms.Write(b, 0, 4);
+            b = BitConverter.GetBytes(param).ToBE();
+            ms.Write(b, 0, 4);
+            if (payload.Length > 0) ms.Write(payload, 0, payload.Length);
+            await _client.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Binary, true, _token);
         }
 
-        private void SendJoinRoom(int channelId)
+        private async Task SendJoinRoom(int channelId)
         {
-            var r = new Random();
-            var tmpuid = (long) (1e14 + 2e14 * r.NextDouble());
-            var packetModel = new {roomid = channelId, uid = tmpuid};
+            var packetModel = new {roomid = channelId};
             var payload = JsonConvert.SerializeObject(packetModel);
-            SendSocketData(7, payload);
+            await SendSocketData(7, payload);
         }
     }
 }
