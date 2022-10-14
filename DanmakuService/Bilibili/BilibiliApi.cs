@@ -31,9 +31,9 @@ public class BilibiliApi
     }
 
     public bool IsConnected => _client.State == WebSocketState.Open;
-    public event EventHandler<IMessage> DanmakuReceived;
+    public event EventHandler<IMessage>? DanmakuReceived;
 
-    private void OnMessage(byte[] rawData)
+    private async Task OnMessage(byte[] rawData)
     {
         var protocol = DanmakuProtocol.FromBuffer(rawData);
         if (protocol.PacketLength < protocol.HeaderLength)
@@ -53,17 +53,17 @@ public class BilibiliApi
             if (protocol.ProtocolVersion == ProtocolType.Zlib)
             {
                 using var compressedStream = new MemoryStream(data);
-                using var deflateStream = new ZLibStream(compressedStream, CompressionMode.Decompress);
+                await using var deflateStream = new ZLibStream(compressedStream, CompressionMode.Decompress);
                 using var decompressedStream = new MemoryStream();
-                deflateStream.CopyTo(decompressedStream);
+                await deflateStream.CopyToAsync(decompressedStream, _token);
                 data = decompressedStream.ToArray();
             }
             else if (protocol.ProtocolVersion == ProtocolType.Brotli)
             {
                 using var compressedStream = new MemoryStream(data);
-                using var brotliStream = new BrotliStream(compressedStream, CompressionMode.Decompress);
+                await using var brotliStream = new BrotliStream(compressedStream, CompressionMode.Decompress);
                 using var decompressedStream = new MemoryStream();
-                brotliStream.CopyTo(decompressedStream);
+                await brotliStream.CopyToAsync(decompressedStream, _token);
                 data = decompressedStream.ToArray();
             }
             var json = Encoding.UTF8.GetString(data);
@@ -73,10 +73,11 @@ public class BilibiliApi
             {
                 try
                 {
-                    DanmakuReceived?.Invoke(this, IMessage.Parse(JObject.Parse(item)));
+                    DanmakuReceived?.Invoke(this, await IMessage.Parse(JObject.Parse(item)));
                 }
                 catch (Exception e)
                 {
+                    // Console.WriteLine(e);
                     continue;
                 }
             }
@@ -111,7 +112,7 @@ public class BilibiliApi
                     }
                     else
                     {
-                        OnMessage(buffer);
+                        await OnMessage(buffer);
                     }
                 }
                 catch (Exception e)
