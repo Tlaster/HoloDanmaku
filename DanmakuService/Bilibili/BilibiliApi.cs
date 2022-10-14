@@ -73,15 +73,7 @@ public class BilibiliApi
             {
                 try
                 {
-                    var obj = JObject.Parse(item);
-                    if (obj["cmd"].ToString() == "ROOM_REAL_TIME_MESSAGE_UPDATE")
-                    {
-                        ViewerCountChanged?.Invoke(this, obj["data"]["fans"].ToObject<int>());
-                    }
-                    else
-                    {
-                        DanmakuReceived?.Invoke(this, new DanmakuModel(obj));
-                    }
+                    DanmakuReceived?.Invoke(this, IMessage.Parse(JObject.Parse(item)));
                 }
                 catch (Exception e)
                 {
