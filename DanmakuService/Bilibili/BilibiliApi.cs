@@ -31,7 +31,7 @@ public class BilibiliApi
     }
 
     public bool IsConnected => _client.State == WebSocketState.Open;
-    public event EventHandler<IMessage>? DanmakuReceived;
+    public event EventHandler<IMessage>? MessageReceived;
 
     private async Task OnMessage(byte[] rawData)
     {
@@ -73,7 +73,7 @@ public class BilibiliApi
             {
                 try
                 {
-                    DanmakuReceived?.Invoke(this, await IMessage.Parse(JObject.Parse(item)));
+                    MessageReceived?.Invoke(this, await IMessage.Parse(JObject.Parse(item)));
                 }
                 catch (Exception e)
                 {

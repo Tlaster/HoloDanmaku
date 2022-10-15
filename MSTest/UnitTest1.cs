@@ -14,7 +14,7 @@ namespace MSTest
         public async Task TestMethod1() 
         {
             var bili = new BilibiliApi(2577655);
-            bili.DanmakuReceived += delegate(object sender, DanmakuModel model)
+            bili.MessageReceived += delegate(object sender, DanmakuModel model)
             {
                 Console.WriteLine(model);
             };

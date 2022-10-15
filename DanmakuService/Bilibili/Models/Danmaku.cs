@@ -11,8 +11,6 @@ public record Danmaku(string Content, Badge? Badge, User User, DateTimeOffset Ti
 
 public record Emoji(string Name, string Url, Badge? Badge, User User, DateTimeOffset Timestamp) : IMessage;
 
-public record Badge(string Name, int Level);
-
 internal class DanmakuMessageParser : IMessageParser
 {
     private readonly Dictionary<long, string> _faceCache = new();
@@ -46,7 +44,7 @@ internal class DanmakuMessageParser : IMessageParser
             }
         }
 
-        var badge = BadgeParser.ParseBadge(obj["info"][3]);
+        var badge = ParseBadge(obj["info"][3]);
         
         var user = new User(Name: userName, Id: userId, Avatar: face);
         if (emojiToken.HasValues)
@@ -59,11 +57,8 @@ internal class DanmakuMessageParser : IMessageParser
             return new Danmaku(Content: message, User: user, Timestamp: timestamp, Badge: badge);
         }
     }
-}
 
-internal class BadgeParser
-{
-    public static Badge? ParseBadge(JToken obj)
+    private static Badge? ParseBadge(JToken obj)
     {
         if (!obj.HasValues)
         {

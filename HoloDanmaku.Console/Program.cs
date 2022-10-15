@@ -2,12 +2,12 @@
 using DanmakuService.Bilibili.Models;
 using Newtonsoft.Json;
 
-var bili = new BilibiliApi(264788);
-bili.DanmakuReceived += delegate(object sender, IMessage model)
+var bili = new BilibiliApi(13);
+bili.MessageReceived += delegate(object sender, IMessage model)
 {
     if (model is not RawMessage)
     {
-        Console.WriteLine(JsonConvert.SerializeObject(model));
+        Console.WriteLine(model.GetType().Name + ": " + JsonConvert.SerializeObject(model));
     }
 };
 await bili.StartAsync();
